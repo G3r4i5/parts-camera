@@ -246,7 +246,8 @@ const ICON = {
   right: svg('<path d="M9 5l7 7-7 7"/>', 2.2),
   download: svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', 2),
   check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 2.4),
-  file: svg('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>')
+  file: svg('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
+  share: svg('<circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/>', 2)
 };
 
 /* ================= helpers ================= */
@@ -354,7 +355,9 @@ let here = store.get('here', '');
 let recent = store.get('recent', []);
 const ui = { q:'', filter: store.get('filter','all'), sendAll:false };
 let sheet = null, lastFocus = null, targetPart = null, zipState = null;
-let offlineReady = false, swSupported = 'serviceWorker' in navigator, persisted = null, estimate = null, installEvt = null;
+/* When this page runs inside the Android app, the app provides this bridge. In a browser it is absent. */
+const NATIVE = window.PartsCameraAndroid || null;
+let offlineReady = !!NATIVE, swSupported = !NATIVE && 'serviceWorker' in navigator, persisted = NATIVE ? true : null, estimate = null, installEvt = null;
 const confirmDel = {id:null, t:null};
 let confirmFree = false;
 
@@ -433,8 +436,8 @@ function renderNow(){
   const sync = $('#sync');
   let cls='busy', txt='Getting ready…';
   if(!idb){ cls='bad'; txt='Storage blocked'; }
-  else if(!swSupported){ cls='warn'; txt='Online only'; }
   else if(offlineReady){ cls='ok'; txt='Works offline'; }
+  else if(!swSupported){ cls='warn'; txt='Online only'; }
   sync.className='sync '+cls; sync.lastElementChild.textContent=txt;
   if(!has){ keepFocus($('#main'), ()=>{ $('#main').innerHTML = viewSetup(); }); if(sheet) keepFocus($('#layer'), ()=>renderSheet()); return; }
   const c = counts(), v = view();
@@ -448,6 +451,7 @@ function renderNow(){
   keepFocus($('#main'), ()=>{ $('#main').innerHTML = v==='parts'?viewParts():v==='unsorted'?viewUnsorted():viewSend(); });
   if(sheet) keepFocus($('#layer'), ()=>renderSheet());
 }
+function pasteRow(){ return `<div class="addrow"><input id="setupPaste" class="input" type="url" placeholder="Paste the setup link" autocomplete="off" style="flex:1 1 150px;width:auto;min-width:0"><button class="btn ghost" data-act="paste-setup">Load</button></div>`; }
 function ctag(cls){ const k = cls==='C'?'c':cls==='B'?'b':cls?'a':'n'; return `<span class="ctag ${k}" title="${esc(CLASS_NAME[cls]||'')}">${esc(cls||'—')}</span>`; }
 function viewSetup(){
   return `<div class="stack">
@@ -455,7 +459,8 @@ function viewSetup(){
     <div class="card stack-sm"><h2>Load your parts list</h2>
       <p>This app keeps photos on this phone and works with no signal. It needs your parts list first, and that stays on this phone too.</p>
       <ol><li>While you have signal, open your parts app on claude.ai.</li><li>Go to <b>Export</b> and tap <b>Open the offline app</b>. The list loads here by itself.</li><li>Then install this app to your home screen so it opens without signal.</li></ol>
-      <p class="fine">Or load the setup file you downloaded from the parts app:</p>
+      <p class="fine">Or paste the setup link (parts app → Export → Copy link), or load the setup file:</p>
+      ${pasteRow()}
       <div class="row"><label class="btn ghost" for="setupIn" role="button" tabindex="0">${ICON.file}Choose setup file</label></div>
     </div></div>`;
 }
@@ -511,9 +516,9 @@ function viewSend(){
   return `<div class="stack">
     <section class="stack-sm"><h2 class="sec"><span>Send to your parts app</span><span class="cnt">${c.unsent} not sent</span></h2>
       <div class="card stack-sm">
-        <p>Makes a zip of the photos on this phone. When you have signal, open your parts app on claude.ai, go to <b>Export</b>, tap <b>Import from the offline app</b> and pick the zip from Downloads. Photos already in the app are skipped.</p>
+        <p>Makes a zip of the photos on this phone. ${NATIVE?'<b>Share</b> sends it to Google Drive (pick your folder; Drive uploads it when you have signal), email or WhatsApp. It’s also saved in Downloads → Parts Camera.':'It’s saved to Downloads.'} Then, in your parts app on claude.ai, go to <b>Export</b>, tap <b>Import from the offline app</b> and pick the zip${NATIVE?' from Drive or Downloads':''}. Photos already in the app are skipped.</p>
         <label class="toggle" for="sendAll"><span><b>Include photos already sent</b><small>${ui.sendAll?'All '+all.length+' photos on this phone':'Only the '+c.unsent+' new ones'}</small></span><input id="sendAll" type="checkbox" ${ui.sendAll?'checked':''}></label>
-        <div class="row"><button class="btn hivis" data-act="zip" ${!scope.length||zipState?'disabled':''}>${ICON.download}Download zip (${scope.length})</button></div>
+        <div class="row">${NATIVE?`<button class="btn hivis" data-act="zip" data-how="share" ${!scope.length||zipState?'disabled':''}>${ICON.share}Share zip (${scope.length})</button><button class="btn ghost" data-act="zip" data-how="save" ${!scope.length||zipState?'disabled':''}>${ICON.download}Save only</button>`:`<button class="btn hivis" data-act="zip" ${!scope.length||zipState?'disabled':''}>${ICON.download}Download zip (${scope.length})</button>`}</div>
         ${zipState?`<p class="fine"><b>${esc(zipState)}</b></p>`:''}
         <p class="fine">The zip is also ready for the SOP: a folder per system, photos named by part number, and a list of captions.</p>
       </div></section>
@@ -523,14 +528,18 @@ function viewSend(){
       <p class="fine">Parts done counts photos on this phone and parts that were already in your parts app when the list was loaded.</p></section>
     <section class="stack-sm"><h2 class="sec"><span>This phone</span></h2><div class="card stack-sm">
       <dl class="facts">
-        <dt>Offline</dt><dd>${!swSupported?'Not supported in this browser':offlineReady?'Ready. The app opens with no signal':'Getting ready. Keep the signal on for a moment'}</dd>
+        ${NATIVE?`<dt>Offline</dt><dd>Always. The app is installed on this phone</dd>
+        <dt>Photo storage</dt><dd>Inside the app. Uninstalling the app deletes it, so send photos first</dd>
+        <dt>App version</dt><dd>${esc(NATIVE.appVersion ? NATIVE.appVersion() : '')}</dd>`
+        :`<dt>Offline</dt><dd>${!swSupported?'Not supported in this browser':offlineReady?'Ready. The app opens with no signal':'Getting ready. Keep the signal on for a moment'}</dd>
         <dt>Home screen</dt><dd>${standalone?'Installed':installEvt?'<button class="btn small" data-act="install">Install</button>':'Use Chrome’s menu → Add to Home screen'}</dd>
-        <dt>Photo storage</dt><dd>${persisted?'Protected from automatic clean-up':persisted===false?'Chrome may clear it if the phone runs out of space. Installing the app helps':'Checking…'}</dd>
+        <dt>Photo storage</dt><dd>${persisted?'Protected from automatic clean-up':persisted===false?'Chrome may clear it if the phone runs out of space. Installing the app helps':'Checking…'}</dd>`}
         ${estimate && estimate.quota?`<dt>Space used</dt><dd>${fmtKB(estimate.usage||0)} of ${fmtKB(estimate.quota)}</dd>`:''}
       </dl></div></section>
     <section class="stack-sm"><h2 class="sec"><span>Parts list</span></h2><div class="card stack-sm">
       <p><b>${esc(setup.name||'Parts list')}</b> · ${PARTS.length} parts · loaded ${esc(fmtWhen(setup.loadedAt))}</p>
-      <p class="fine">To refresh it, open the offline app again from your parts app, or load a new setup file. Photos stay.</p>
+      <p class="fine">To refresh it (for example after adding parts in your parts app), go to Export there, tap Copy link and paste it here, or load a new setup file. Photos stay.</p>
+      ${pasteRow()}
       <div class="row"><label class="btn ghost small" for="setupIn" role="button" tabindex="0">${ICON.file}Load setup file</label></div></div></section>
   </div>`;
 }
@@ -652,7 +661,22 @@ function toast(msg, acts){
 /* ================= export ================= */
 const safe = s => String(s).replace(/①/g,'1').replace(/②/g,'2').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').trim();
 const csvCell = v => { const s=String(v==null?'':v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
-async function exportZip(){
+function toB64(u8){ let b=''; for(let i=0;i<u8.length;i+=0x8000) b+=String.fromCharCode.apply(null, u8.subarray(i, i+0x8000)); return btoa(b); }
+async function nativeSave(blob, name){
+  const token = NATIVE.beginFile(name);
+  if(!token) throw new Error('begin');
+  const CH = 768*1024;
+  for(let i=0;i<blob.size;i+=CH){
+    const part = new Uint8Array(await blob.slice(i, i+CH).arrayBuffer());
+    if(!NATIVE.appendChunk(token, toB64(part))) throw new Error('write');
+    zipState = `Saving ${Math.min(100, Math.round((i+CH)/blob.size*100))}%…`; render();
+    await new Promise(r=>setTimeout(r,0));
+  }
+  const res = JSON.parse(NATIVE.finishFile(token) || '{}');
+  if(!res.ok) throw new Error('finish');
+  return {token, where:res.where||'Downloads'};
+}
+async function exportZip(how){
   if(!window.JSZip){ toast('The zip tool didn’t load. Reload the app once with signal.'); return; }
   const take = p => ui.sendAll || !p.sentAt;
   const items = [];
@@ -678,12 +702,18 @@ async function exportZip(){
     zipState = 'Building the zip…'; render();
     const blob = await zip.generateAsync({type:'blob', compression:'STORE', mimeType:'application/zip'});
     const name = `Parts photos ${todayStr()} ${String(Date.now()).slice(-4)}.zip`;
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 15000);
+    let where = 'Downloads';
+    if(NATIVE){
+      const saved = await nativeSave(blob, name); where = saved.where;
+      if(how==='share') NATIVE.shareFile(saved.token, 'application/zip');
+    } else {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 15000);
+    }
     const now = new Date().toISOString();
     items.forEach(({p})=>{ const r=recs.get(p.id); if(r && !r.meta.sentAt){ r.meta.sentAt=now; phPut(r).catch(()=>{}); } });
     zipState = null; render();
-    toast(`Zip saved to Downloads (${fmtKB(blob.size)}). ${items.length} photo${items.length===1?'':'s'} marked as sent.`);
+    toast(`Zip saved to ${where} (${fmtKB(blob.size)}). ${items.length} photo${items.length===1?'':'s'} marked as sent.`);
   }catch(e){ zipState=null; render(); toast('Making the zip failed. Free up some space and try again.'); }
 }
 async function freeSent(){
@@ -720,7 +750,8 @@ document.addEventListener('click', e=>{
       if(confirmDel.id!==d.id){ confirmDel.id=d.id; clearTimeout(confirmDel.t); confirmDel.t=setTimeout(()=>{ confirmDel.id=null; render(); }, 4000); renderSheet(); break; }
       confirmDel.id=null; const l=listFor(sheet.list), i=l.indexOf(d.id); deletePhoto(d.id);
       const next=l[i+1]||l[i-1]; if(next){ sheet.id=next; renderSheet(); } else closeSheet(); toast('Photo deleted'); break; }
-    case 'zip': exportZip(); break;
+    case 'zip': exportZip(d.how||'save'); break;
+    case 'paste-setup': pasteSetup(); break;
     case 'np-new': {
       const from = d.from==='pick' && sheet ? sheet : null;
       const ns = {type:'newpart', ids: from ? from.ids : [], from, name: from ? (from.q||'').trim() : (ui.q||'').trim()};
@@ -779,6 +810,44 @@ window.addEventListener('hashchange', ()=>{ if(location.hash.indexOf('#setup=')=
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); installEvt=e; render(); });
 window.addEventListener('appinstalled', ()=>{ installEvt=null; render(); toast('Installed. Open it from your home screen, even with no signal.'); });
 
+async function pasteSetup(){
+  const el = $('#setupPaste'), v = el ? el.value.trim() : '';
+  const i = v.indexOf('#setup=');
+  if(i<0){ toast('That isn’t a setup link. In your parts app, go to Export and tap Copy link.'); return; }
+  try{ await takeSetup(await decodeSetup(v.slice(i+7)), 'paste'); }catch(e){ toast('That setup link didn’t work. Copy it again from your parts app.'); }
+}
+/* The Android back button asks the page first: close a sheet, then go back to the parts list. */
+window.__pcBack = function(){
+  if(sheet){ closeSheet(); return true; }
+  if(view()!=='parts'){ location.hash='parts'; return true; }
+  return false;
+};
+/* The Android app ships with the parts list built in. */
+async function loadBundledSetup(){
+  try{ const r = await fetch('setup.json', {cache:'no-store'}); if(!r.ok) return; const s = await r.json(); if(validSetup(s)) await takeSetup(s, 'bundled'); }catch(e){}
+}
+/* Photos the camera saved while Android had closed this app come back here. */
+let recovering = false;
+window.__pcRecover = ()=>{ if(NATIVE && setup && idb) recoverPhotos(); };
+async function recoverPhotos(){
+  if(recovering) return; recovering = true;
+  try{ await recoverNow(); } finally { recovering = false; }
+}
+async function recoverNow(){
+  let names = [];
+  try{ names = JSON.parse(NATIVE.recoveredPhotos() || '[]'); }catch(e){ return; }
+  let n = 0;
+  for(const name of names){
+    try{
+      const r = await fetch('/camera/' + encodeURIComponent(name)); if(!r.ok) continue;
+      const blob = await r.blob(); if(!blob.size) continue;
+      const ids = await addFiles([new File([blob], name, {type:'image/jpeg'})], null);
+      if(ids.length){ n++; NATIVE.dropRecovered(name); }
+    }catch(e){}
+  }
+  if(n) toast(`${n} photo${n===1?'':'s'} taken while the app was closed ${n===1?'was':'were'} saved to Unsorted`, [{label:'Sort now', fn:()=>{ location.hash='unsorted'; }}]);
+}
+
 /* ================= start ================= */
 async function start(){
   idb = await idbOpen();
@@ -791,7 +860,9 @@ async function start(){
   if(navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(v=>{ persisted=v; render(); }).catch(()=>{});
   if(setup) await reconcileLocal();
   await readHash();
+  if(NATIVE && !setup && idb) await loadBundledSetup();
   render();
+  if(NATIVE && setup && idb) recoverPhotos();
   if(swSupported){
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if(hadController) toast('A new version of the app is ready', [{label:'Reload', fn:()=>location.reload()}]); });
