@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#13202A">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>Parts Camera</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+@font-face{font-family:"Barlow";src:url(barlow-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Barlow";src:url(barlow-600.woff2) format("woff2");font-weight:500 600;font-display:swap}
+@font-face{font-family:"Barlow";src:url(barlow-700.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"Barlow Semi Condensed";src:url(barlow-semi-condensed-700.woff2) format("woff2");font-weight:600 700;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url(ibm-plex-mono-500.woff2) format("woff2");font-weight:400 500;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url(ibm-plex-mono-600.woff2) format("woff2");font-weight:600;font-display:swap}
+/* Layout: one-handed phone app. Sticky header (progress, views, parlour), scrolling parts list, fixed hi-vis camera bar at the thumb. */
+:root{
+  --bg:#ECF0F2; --surface:#FFFFFF; --surface-2:#F4F6F8;
+  --ink:#13202A; --ink-2:#4E5E6A; --ink-3:#77868F; --line:#D3DBE0;
+  --accent:#1B5A87; --accent-soft:#DFEAF4;
+  --hivis:#F5C430; --hivis-edge:#D3A20C; --hivis-ink:#1C1505;
+  --bad:#B4352B; --bad-soft:#FAE5E2; --on-bad:#FFFFFF;
+  --warn:#8E5C08; --warn-soft:#FBEFD6;
+  --ok:#2B784B; --ok-soft:#E0F1E6;
+  --scrim:rgba(8,14,18,.55);
+  --shadow:0 1px 2px rgba(19,32,42,.06),0 10px 28px rgba(19,32,42,.12);
+  --f-display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:6px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0D1418; --surface:#151F26; --surface-2:#1B272F;
+  --ink:#E4EBEF; --ink-2:#A2B1BB; --ink-3:#768792; --line:#273641;
+  --accent:#7DB4DE; --accent-soft:#183247;
+  --hivis-edge:#F5C430;
+  --bad:#F07A6B; --bad-soft:#3A1F1C; --on-bad:#1E0C09;
+  --warn:#E6AE4C; --warn-soft:#33270F;
+  --ok:#68C18E; --ok-soft:#142E1F;
+  --scrim:rgba(0,0,0,.66);
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.4);
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg)}
+[hidden]{display:none!important}
+img{max-width:100%}
+html.locked body{overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button,label[role="button"]{cursor:pointer}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{margin:0;text-wrap:balance}
+p{margin:0}
+ol{margin:0;padding-left:20px;display:grid;gap:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;opacity:0}
+#camIn,#galIn,#setupIn{position:fixed;top:0;left:0}
+.muted{color:var(--ink-2)}
+.fine{font-size:13px;color:var(--ink-2);max-width:62ch}
+.code{font:500 12px/1.2 var(--f-mono);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.eyebrow{font:500 11px/1.3 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+svg{flex:none}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+.top-in{max-width:820px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:grid;gap:9px}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tb-title{font:700 25px/1.05 var(--f-display)}
+.sync{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border-radius:16px;font:600 13px/1.2 var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink-2);white-space:nowrap}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+.sync.ok i{background:var(--ok)} .sync.busy i{background:var(--accent);animation:pulse 1s infinite alternate}
+.sync.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent} .sync.warn i{background:var(--warn)}
+.sync.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent} .sync.bad i{background:var(--bad)}
+@keyframes pulse{from{opacity:.35}to{opacity:1}}
+.cov{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+.meter{height:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--ok);transition:width .3s}
+.cov span{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cov b{color:var(--ink)}
+.navrow{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:2px;gap:2px;min-width:0}
+.seg button,.seg a{border:0;background:transparent;padding:7px 11px;border-radius:6px;font:600 15px/1.2 var(--f-display);letter-spacing:.02em;color:var(--ink-2);white-space:nowrap;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.seg [aria-pressed="true"],.seg [aria-current="page"]{background:var(--ink);color:var(--bg)}
+.seg .n{font:600 11px/1 var(--f-mono);padding:2px 5px;border-radius:8px;background:var(--warn-soft);color:var(--warn)}
+.seg [aria-current="page"] .n{background:var(--hivis);color:var(--hivis-ink)}
+.here{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)}
+.here .seg button{padding:5px 7px}
+.pm{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;font:700 12px/1 var(--f-display);flex:none}
+
+main{max-width:820px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px calc(112px + env(safe-area-inset-bottom,0px))}
+.stack{display:grid;gap:18px;align-content:start;min-width:0}
+.stack-sm{display:grid;gap:10px;align-content:start;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sec{font:700 14px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.sec .cnt{font:500 12px/1 var(--f-mono);letter-spacing:.02em;text-transform:none;color:var(--ink-3)}
+.sec .cnt.full{color:var(--ok)}
+.sysno{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;margin-right:8px;border-radius:3px;background:var(--ink);color:var(--bg);font:600 12px/1 var(--f-mono);vertical-align:1px}
+.h4{font:700 15px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-2)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.card h2{font:700 21px/1.15 var(--f-display)}
+.notice{border-radius:8px;padding:12px 14px;font-size:14.5px;display:grid;gap:8px}
+.notice.warn{background:var(--warn-soft)} .notice.bad{background:var(--bad-soft)} .notice.info{background:var(--accent-soft)}
+.notice b{display:block;font:700 16px/1.2 var(--f-display)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:4px;font:600 12px/1.3 var(--f-body);white-space:nowrap;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
+.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.ctag{display:inline-grid;place-items:center;min-width:24px;height:20px;padding:0 4px;border-radius:3px;font:600 11.5px/1 var(--f-mono);flex:none}
+.ctag.a{background:var(--ink);color:var(--bg);border:1.5px solid var(--ink)}
+.ctag.b{border:1.5px solid var(--ink);color:var(--ink)}
+.ctag.c{border:1.5px dashed var(--ink-3);color:var(--ink-2)}
+.ctag.n{border:1.5px dotted var(--ink-3);color:var(--ink-3)}
+
+.btn{min-height:44px;padding:0 16px;border-radius:var(--r);border:1px solid var(--ink);background:var(--ink);color:var(--bg);font:700 15px/1 var(--f-display);letter-spacing:.05em;text-transform:uppercase;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;user-select:none}
+.btn svg{width:20px;height:20px}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.hivis{background:var(--hivis);color:var(--hivis-ink);border-color:var(--hivis-edge)}
+.btn.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
+.btn.small{min-height:36px;padding:0 12px;font-size:13.5px}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.input{width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+textarea.input{resize:vertical;min-height:80px}
+.field{display:grid;gap:6px;min-width:0}
+.label{font:600 11.5px/1.2 var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);padding:7px 11px;border-radius:var(--r);font-weight:600;min-height:38px;display:inline-flex;align-items:center;gap:7px;text-align:left;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed="true"] .code{color:inherit}
+.chip .code{font-size:11.5px}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0}
+.toggle b{display:block;font-weight:600}
+.toggle small{display:block;color:var(--ink-2);font-size:13px}
+.toggle input{width:22px;height:22px;accent-color:var(--accent);flex:none}
+
+.plist{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.plist li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.plist li + li{border-top:1px solid var(--line)}
+.prow{display:grid;grid-template-columns:58px minmax(0,1fr);gap:12px;align-items:center;padding:8px 6px 8px 10px;background:none;border:0;text-align:left;min-width:0}
+.prow:hover{background:var(--surface-2)}
+.pname{font-weight:600;min-width:0;line-height:1.3}
+.pname .code{display:block;margin-bottom:2px}
+.pname small{display:block;font-weight:400;color:var(--ink-2);font-size:13px;line-height:1.3;margin-top:2px}
+.inapp{display:inline-flex;align-items:center;gap:4px;margin-top:3px;font:600 11.5px/1.2 var(--f-mono);color:var(--ok)}
+.thumb{position:relative;width:58px;height:58px;border-radius:6px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink-3)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb svg{width:24px;height:24px}
+.thumb .badge{position:absolute;right:3px;bottom:3px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--ink);color:var(--bg);font:600 10.5px/18px var(--f-mono);text-align:center}
+.cam{width:52px;height:52px;margin-right:10px;border-radius:10px;border:1.5px solid var(--hivis-edge);background:var(--hivis);color:var(--hivis-ink);display:grid;place-items:center}
+.cam svg{width:24px;height:24px}
+.tools{display:grid;gap:10px}
+.empty{color:var(--ink-2);padding:14px 4px}
+
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.tile{position:relative;aspect-ratio:1;max-width:100%;border-radius:6px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);padding:0}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .tag{position:absolute;left:4px;top:4px;display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border-radius:4px;font:600 10.5px/1.2 var(--f-mono);text-transform:uppercase;letter-spacing:.04em}
+.tile .tag.sop{background:var(--hivis);color:var(--hivis-ink)}
+.tile .tag.sent{left:auto;right:4px;background:rgba(0,0,0,.6);color:#fff}
+.tile .cap{position:absolute;left:0;right:0;bottom:0;padding:14px 6px 4px;font-size:11.5px;line-height:1.2;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.7));text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{padding:9px 12px;text-align:left;border-top:1px solid var(--line);white-space:nowrap}
+td:first-child{white-space:normal}
+th{font:600 11px/1.2 var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);border-top:0;background:var(--surface-2)}
+.num{text-align:right}
+.done{color:var(--ok);font-weight:700}
+.facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;font-size:14px}
+.facts dt{color:var(--ink-2)} .facts dd{margin:0;font-weight:600}
+
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));padding-top:10px}
+.ab-in{max-width:820px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px}
+.ab-in .btn{min-height:56px;font-size:17px}
+.ab-in .btn svg{width:24px;height:24px}
+.ab-in .gbtn{padding:0 14px}
+
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:70}
+.sheet{position:fixed;z-index:71;left:0;right:0;bottom:0;max-height:94%;overflow:auto;overscroll-behavior:contain;background:var(--surface);border-radius:14px 14px 0 0;box-shadow:var(--shadow);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+.sheet.enter{animation:sheetUp .2s ease-out}
+@keyframes sheetUp{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media (min-width:960px){.sheet{left:auto;top:0;width:min(560px,100%);max-height:none;border-radius:0;border-left:1px solid var(--line);padding-left:24px;padding-right:24px}}
+.sheet-head{position:sticky;top:0;z-index:2;background:var(--surface);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-block:14px 12px;border-bottom:1px solid var(--line)}
+.sheet-title{font:700 23px/1.1 var(--f-display)}
+.sheet-body{padding-top:14px}
+.iconbtn{width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--surface);flex:none}
+.iconbtn svg{width:22px;height:22px}
+.viewer{margin:0;border-radius:8px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:grid;place-items:center;min-height:200px}
+.viewer img{max-width:100%;max-height:58vh;object-fit:contain;display:block}
+.vnav{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}
+.vnav span{text-align:center;font-size:13px;color:var(--ink-2)}
+.saved{font-size:12.5px;color:var(--ink-3);min-height:1em}
+.picklist{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.picklist li + li{border-top:1px solid var(--line)}
+.picklist button{width:100%;display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border:0;background:var(--surface);text-align:left}
+.preview{display:flex;gap:6px;overflow-x:auto}
+.preview img{width:84px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none}
+.toast{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));margin:0 auto;width:fit-content;max-width:560px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--ink);color:var(--bg);padding:10px 12px 10px 16px;border-radius:10px;box-shadow:var(--shadow);font-weight:500;font-size:14.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.toast button{background:transparent;color:var(--hivis);border:0;font:700 14px/1 var(--f-display);text-transform:uppercase;letter-spacing:.05em;padding:8px 6px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <div class="top-row">
+    <div style="min-width:0"><div class="eyebrow" id="eyebrow">Parts Camera</div><h1 class="tb-title">Parts photos</h1></div>
+    <span class="sync" id="sync" role="status"><i></i><span>Starting…</span></span>
+  </div>
+  <div class="cov" id="covRow"><div class="meter" role="img" id="covMeter" aria-label="Coverage"><i id="covBar" style="width:0%"></i></div><span id="covText"></span></div>
+  <div class="navrow" id="navRow">
+    <nav class="seg" id="views" aria-label="Views"></nav>
+    <div class="here" title="New photos get tagged with this place"><span>At</span><div class="seg" role="group" aria-label="Where you are" id="here"></div></div>
+  </div>
+</div></header>
+<main id="main" tabindex="-1"></main>
+<div class="actionbar" id="actionWrap"><div class="ab-in" id="actionbar"></div></div>
+<input type="file" id="camIn" accept="image/*" capture="environment" class="sr" tabindex="-1" aria-hidden="true">
+<input type="file" id="galIn" accept="image/*" multiple class="sr" tabindex="-1" aria-hidden="true">
+<input type="file" id="setupIn" accept=".json,application/json" class="sr" tabindex="-1" aria-hidden="true">
+<div id="layer" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="jszip.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ================= icons ================= */
+const svg = (d, w) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w||1.8}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  camera: svg('<path d="M3.5 8h3.5l2-3h6l2 3h3.5v11.5h-17z"/><circle cx="12" cy="13.2" r="3.6"/>', 2),
+  gallery: svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-8.5 8.5"/>', 2),
+  close: svg('<path d="M6 6l12 12M18 6L6 18"/>', 2),
+  star: svg('<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z"/>'),
+  starOn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z"/></svg>',
+  move: svg('<path d="M4 12h14M13 7l5 5-5 5"/>'),
+  trash: svg('<path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/>'),
+  left: svg('<path d="M15 5l-7 7 7 7"/>', 2.2),
+  right: svg('<path d="M9 5l7 7-7 7"/>', 2.2),
+  download: svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>', 2),
+  check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 2.4),
+  file: svg('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>')
+};
+
+/* ================= helpers ================= */
+const $ = (s, el) => (el||document).querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const z2 = n => String(n).padStart(2,'0');
+const todayStr = () => { const d=new Date(); return d.getFullYear()+'-'+z2(d.getMonth()+1)+'-'+z2(d.getDate()); };
+function fmtWhen(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]} ${z2(d.getHours())}:${z2(d.getMinutes())}`; }
+const fmtKB = b => b>=1073741824 ? (b/1073741824).toFixed(1)+' GB' : b>=1048576 ? (b/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(b/1024))+' KB';
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const store = { get(k, d){ try{ const v=localStorage.getItem('pc:'+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } }, set(k, v){ try{ localStorage.setItem('pc:'+k, JSON.stringify(v)); }catch(e){} } };
+
+/* ================= on-phone database ================= */
+let idb = null;
+function idbOpen(){ return new Promise(res=>{ try{ const r=indexedDB.open('parts-camera',1); r.onupgradeneeded=()=>{ r.result.createObjectStore('photos',{keyPath:'id'}); r.result.createObjectStore('kv'); }; r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); r.onblocked=()=>res(null); }catch(e){ res(null); } }); }
+function idbDo(name, mode, fn){ return new Promise((ok, no)=>{ if(!idb) return no(new Error('no-db')); try{ const tx=idb.transaction(name, mode); const r=fn(tx.objectStore(name)); tx.oncomplete=()=>ok(r && r.result); tx.onerror=()=>no(tx.error); tx.onabort=()=>no(tx.error); }catch(e){ no(e); } }); }
+const kvGet = k => idbDo('kv','readonly', s=>s.get(k));
+const kvPut = (k, v) => idbDo('kv','readwrite', s=>s.put(v, k));
+const phPut = rec => idbDo('photos','readwrite', s=>s.put({id:rec.id, blob:rec.blob, meta:rec.meta}));
+const phDel = id => idbDo('photos','readwrite', s=>s.delete(id));
+const phAll = () => idbDo('photos','readonly', s=>s.getAll());
+function saveFailed(){ toast('This phone’s storage refused the change. Free up some space, then try again.'); }
+
+/* ================= the parts list (loaded from a setup link or file) ================= */
+let setup = null, PARTS = [], PART = {}, SYSTEMS = {}, CLASS_NAME = {}, PLACES = [], HAVE = {};
+const PLACE = id => PLACES.find(p=>p.id===id);
+function validSetup(s){
+  return s && s.kind==='parts-camera-setup' && Array.isArray(s.parts) && s.parts.length>0 && s.parts.length<2000 &&
+    s.parts.every(p=>p && typeof p.code==='string' && /^[A-Za-z0-9_.:-]{1,40}$/.test(p.code) && typeof p.name==='string');
+}
+function applySetup(s){
+  setup = s;
+  SYSTEMS = (s.systems && typeof s.systems==='object') ? s.systems : {};
+  CLASS_NAME = (s.classes && typeof s.classes==='object') ? s.classes : {};
+  PLACES = Array.isArray(s.places) ? s.places.filter(p=>p && /^[a-z0-9]{1,12}$/.test(p.id)).slice(0,6) : [];
+  HAVE = (s.have && typeof s.have==='object') ? s.have : {};
+  PARTS = s.parts.map(p=>({code:p.code, name:String(p.name), cls:String(p.cls||''), note:String(p.note||''), sys:String(p.sys==null?'':p.sys)}));
+  PART = Object.fromEntries(PARTS.map(p=>[p.code,p]));
+  $('#eyebrow').textContent = (s.name ? s.name+' · ' : '') + 'Offline';
+}
+function b64uToBytes(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='='; const bin=atob(s); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+async function decodeSetup(token){
+  const m = /^([zj])\.([A-Za-z0-9_-]+)$/.exec(token); if(!m) throw new Error('format');
+  const bytes = b64uToBytes(m[2]);
+  let text;
+  if(m[1]==='z'){ const st = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')); text = await new Response(st).text(); }
+  else text = new TextDecoder().decode(bytes);
+  return JSON.parse(text);
+}
+async function takeSetup(s, how){
+  if(!validSetup(s)){ toast('That isn’t a parts list this app can read.'); return false; }
+  s.loadedAt = new Date().toISOString();
+  applySetup(s);
+  try{ await kvPut('setup', s); }catch(e){ saveFailed(); }
+  render();
+  toast(`Parts list loaded${s.name?': '+s.name:''}, ${s.parts.length} parts`);
+  return true;
+}
+async function readHash(){
+  const h = location.hash;
+  if(h.indexOf('#setup=')!==0) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  try{ await takeSetup(await decodeSetup(h.slice(7)), 'link'); }
+  catch(e){ toast('The setup link didn’t work. Load the setup file instead.'); }
+}
+
+/* ================= photos ================= */
+const recs = new Map();   // id -> {id, blob, meta, url}
+let notes = {};           // code -> {note, at}
+let here = store.get('here', '');
+let recent = store.get('recent', []);
+const ui = { q:'', filter: store.get('filter','all'), sendAll:false };
+let sheet = null, lastFocus = null, targetPart = null, zipState = null;
+let offlineReady = false, swSupported = 'serviceWorker' in navigator, persisted = null, estimate = null, installEvt = null;
+const confirmDel = {id:null, t:null};
+let confirmFree = false;
+
+const asPhoto = r => Object.assign({id:r.id, url:r.url}, r.meta);
+function allPhotos(){ return [...recs.values()].map(asPhoto); }
+const byTime = (a,b) => String(a.takenAt||'').localeCompare(String(b.takenAt||''));
+function photosFor(code){ const l = allPhotos().filter(p=>p.part===code).sort(byTime); const i = l.findIndex(p=>p.pick); if(i>0) l.unshift(l.splice(i,1)[0]); return l; }
+const unsorted = () => allPhotos().filter(p=>!p.part || !PART[p.part]).sort(byTime);
+const getPhoto = id => { const r=recs.get(id); return r ? asPhoto(r) : null; };
+function counts(){
+  const all = allPhotos(), mine = new Set(all.filter(p=>p.part && PART[p.part]).map(p=>p.part));
+  const set = new Set(mine); Object.keys(HAVE).forEach(c=>{ if(PART[c] && HAVE[c]>0) set.add(c); });
+  return {photos:all.length, mine, set, parts:set.size, unsorted:all.filter(p=>!p.part||!PART[p.part]).length, unsent:all.filter(p=>!p.sentAt).length};
+}
+const plab = p => { const pl=PLACE(p); return pl ? `${setup.placeWord||'Place'} ${pl.short}` : p==='site' ? 'Shared' : ''; };
+
+async function shrink(file){
+  const MAX = 2000; let source, w, h, done = ()=>{};
+  try{ const bmp = await createImageBitmap(file, {imageOrientation:'from-image'}); source=bmp; w=bmp.width; h=bmp.height; done=()=>{ if(bmp.close) bmp.close(); }; }
+  catch(e){ const u=URL.createObjectURL(file); const img = await new Promise((ok, no)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=no; i.src=u; }); source=img; w=img.naturalWidth; h=img.naturalHeight; done=()=>URL.revokeObjectURL(u); }
+  const s = Math.min(1, MAX/Math.max(w,h)), cw=Math.round(w*s), ch=Math.round(h*s);
+  const c = document.createElement('canvas'); c.width=cw; c.height=ch; c.getContext('2d').drawImage(source, 0, 0, cw, ch); done();
+  const blob = await new Promise((ok, no)=>c.toBlob(b=>b?ok(b):no(new Error('encode')), 'image/jpeg', 0.85));
+  return {blob, w:cw, h:ch};
+}
+async function addFiles(files, part){
+  const ids = [];
+  toast(files.length>1 ? `Saving ${files.length} photos…` : 'Saving photo…');
+  for(const f of files){
+    let r;
+    try{ r = await shrink(f); }catch(e){ toast('That photo couldn’t be read. Take it with the Take photo button instead.'); continue; }
+    const id = newId();
+    const meta = {part:part||null, parlour:here||null, point:null, caption:'', takenAt:new Date().toISOString(), w:r.w, h:r.h, bytes:r.blob.size, pick:false, sentAt:null};
+    const rec = {id, blob:r.blob, meta, url:URL.createObjectURL(r.blob)};
+    try{ await phPut(rec); }catch(e){ URL.revokeObjectURL(rec.url); saveFailed(); continue; }
+    recs.set(id, rec); ids.push(id);
+  }
+  if(part) pushRecent(part);
+  if(ids.length) askPersist();
+  render();
+  return ids;
+}
+function pushRecent(code){ recent = [code].concat(recent.filter(c=>c!==code)).slice(0,6); store.set('recent', recent); }
+function askPersist(){ if(persisted || !navigator.storage || !navigator.storage.persist) return; navigator.storage.persist().then(v=>{ persisted=v; render(); }).catch(()=>{}); }
+function updatePhoto(id, patch){ const r=recs.get(id); if(!r) return; Object.assign(r.meta, patch); render(); phPut(r).catch(saveFailed); }
+function setPick(id){
+  const p = getPhoto(id); if(!p || !p.part) return;
+  const on = !p.pick || photosFor(p.part)[0].id!==id;
+  photosFor(p.part).forEach(x=>{ if(x.id!==id && x.pick) updatePhoto(x.id, {pick:false}); });
+  updatePhoto(id, {pick:on});
+  toast(on ? 'This photo goes in the SOP for this part' : 'SOP photo cleared');
+}
+async function deletePhoto(id){ const r=recs.get(id); if(!r) return; recs.delete(id); URL.revokeObjectURL(r.url); render(); try{ await phDel(id); }catch(e){ saveFailed(); } }
+const noteTimers = {};
+function saveNote(code, text){
+  notes[code] = {note:text, at:new Date().toISOString()};
+  clearTimeout(noteTimers.t); const el=$('#noteSaved'); if(el) el.textContent='Saving…';
+  noteTimers.t = setTimeout(()=>{ kvPut('notes', notes).then(()=>{ const s=$('#noteSaved'); if(s) s.textContent='Saved on this phone'; }).catch(saveFailed); }, 600);
+}
+const capTimers = {};
+function saveCaption(id, text){ const r=recs.get(id); if(r) r.meta.caption=text; clearTimeout(capTimers[id]); capTimers[id]=setTimeout(()=>updatePhoto(id,{caption:text}), 600); }
+
+/* ================= rendering ================= */
+let raf = 0;
+function render(){ if(raf) return; raf = requestAnimationFrame(()=>{ raf=0; renderNow(); }); }
+function keepFocus(container, fn){
+  const a = document.activeElement, keep = a && container.contains(a) && a.id ? {id:a.id, v:a.value, s:a.selectionStart, e:a.selectionEnd} : null;
+  fn();
+  if(keep){ const el=document.getElementById(keep.id); if(el){ if(typeof keep.v==='string' && (el.tagName==='TEXTAREA' || el.type==='text' || el.type==='search')) el.value=keep.v; try{ el.focus({preventScroll:true}); if(keep.s!=null && el.setSelectionRange) el.setSelectionRange(keep.s, keep.e); }catch(e){} } }
+}
+function view(){ const h=location.hash.slice(1); return ['parts','unsorted','send'].includes(h) ? h : 'parts'; }
+function renderNow(){
+  const has = !!setup;
+  $('#covRow').hidden = !has; $('#navRow').hidden = !has; $('#actionWrap').hidden = !has;
+  const sync = $('#sync');
+  let cls='busy', txt='Getting ready…';
+  if(!idb){ cls='bad'; txt='Storage blocked'; }
+  else if(!swSupported){ cls='warn'; txt='Online only'; }
+  else if(offlineReady){ cls='ok'; txt='Works offline'; }
+  sync.className='sync '+cls; sync.lastElementChild.textContent=txt;
+  if(!has){ keepFocus($('#main'), ()=>{ $('#main').innerHTML = viewSetup(); }); if(sheet) keepFocus($('#layer'), ()=>renderSheet()); return; }
+  const c = counts(), v = view();
+  $('#covBar').style.width = Math.round(c.parts/PARTS.length*100)+'%';
+  $('#covText').innerHTML = `<b>${c.parts}</b> of ${PARTS.length} parts · ${c.photos} on phone${c.unsent?` · ${c.unsent} to send`:''}`;
+  $('#covMeter').setAttribute('aria-label', `${c.parts} of ${PARTS.length} parts photographed`);
+  $('#views').innerHTML = [['parts','Parts'],['unsorted','Unsorted'],['send','Send']].map(([k,l])=>`<a href="#${k}" ${v===k?'aria-current="page"':''}>${l}${k==='unsorted'&&c.unsorted?`<span class="n">${c.unsorted}</span>`:''}${k==='send'&&c.unsent?`<span class="n">${c.unsent}</span>`:''}</a>`).join('');
+  $('#here').innerHTML = PLACES.map(p=>`<button data-act="here" data-p="${esc(p.id)}" aria-pressed="${here===p.id}" aria-label="${esc(plab(p.id))}"><span class="pm">${esc(p.short)}</span></button>`).join('');
+  $('#here').parentElement.hidden = !PLACES.length;
+  $('#actionbar').innerHTML = `<label class="btn ghost gbtn" for="galIn" role="button" tabindex="0" data-part="" aria-label="Add from gallery">${ICON.gallery}</label><label class="btn hivis" for="camIn" role="button" tabindex="0" data-part="">${ICON.camera}Take photo</label>`;
+  keepFocus($('#main'), ()=>{ $('#main').innerHTML = v==='parts'?viewParts():v==='unsorted'?viewUnsorted():viewSend(); });
+  if(sheet) keepFocus($('#layer'), ()=>renderSheet());
+}
+function ctag(cls){ const k = cls==='C'?'c':cls==='B'?'b':cls?'a':'n'; return `<span class="ctag ${k}" title="${esc(CLASS_NAME[cls]||'')}">${esc(cls||'—')}</span>`; }
+function viewSetup(){
+  return `<div class="stack">
+    ${!idb?`<div class="notice bad"><b>This browser is blocking storage</b>Photos can’t be kept. Open the app in Chrome, not in a private tab.</div>`:''}
+    <div class="card stack-sm"><h2>Load your parts list</h2>
+      <p>This app keeps photos on this phone and works with no signal. It needs your parts list first, and that stays on this phone too.</p>
+      <ol><li>While you have signal, open your parts app on claude.ai.</li><li>Go to <b>Export</b> and tap <b>Open the offline app</b>. The list loads here by itself.</li><li>Then install this app to your home screen so it opens without signal.</li></ol>
+      <p class="fine">Or load the setup file you downloaded from the parts app:</p>
+      <div class="row"><label class="btn ghost" for="setupIn" role="button" tabindex="0">${ICON.file}Choose setup file</label></div>
+    </div></div>`;
+}
+function thumbHTML(code, size){
+  const l = photosFor(code), p = l[0], st = size?` style="width:${size}px;height:${size}px"`:'';
+  if(!p) return `<span class="thumb"${st}>${ICON.camera}</span>`;
+  return `<span class="thumb"${st}><img src="${esc(p.url)}" alt="" loading="lazy"><span class="badge">${l.length}</span></span>`;
+}
+function viewParts(){
+  const q = ui.q.trim().toLowerCase(), c = counts();
+  const match = p => (!q || (p.code+' '+p.name+' '+p.note).toLowerCase().includes(q)) && (ui.filter==='all' || (ui.filter==='missing' ? !c.set.has(p.code) : c.set.has(p.code)));
+  const sysKeys = [...new Set(PARTS.map(p=>p.sys))];
+  let html = '';
+  sysKeys.forEach(s=>{
+    const all = PARTS.filter(p=>p.sys===s), items = all.filter(match);
+    if(!items.length) return;
+    const got = all.filter(p=>c.set.has(p.code)).length;
+    html += `<section class="stack-sm"><h2 class="sec"><span><span class="sysno">${s==='0'?'·':esc(s)}</span>${esc(SYSTEMS[s]||'')}</span><span class="cnt ${got===all.length?'full':''}">${got} / ${all.length}</span></h2>
+      <ul class="plist">${items.map(p=>{ const inApp = HAVE[p.code]>0 && !c.mine.has(p.code);
+        return `<li><button class="prow" data-act="part" data-code="${esc(p.code)}">${thumbHTML(p.code)}<span class="pname"><span class="code">${esc(p.code)} · ${ctag(p.cls)}</span>${esc(p.name)}${p.note?`<small>${esc(p.note)}</small>`:''}${inApp?`<span class="inapp">${ICON.check.replace('<svg','<svg width="13" height="13"')}${HAVE[p.code]} already in the app</span>`:''}</span></button><label class="cam" for="camIn" role="button" tabindex="0" data-part="${esc(p.code)}" aria-label="Take a photo of ${esc(p.name)}">${ICON.camera}</label></li>`; }).join('')}</ul></section>`;
+  });
+  const F = [['all','All',PARTS.length],['missing','No photo yet',PARTS.length-c.parts],['done','Has a photo',c.parts]];
+  return `<div class="stack">${installNotice()}
+    <div class="tools"><input id="q" class="input" type="search" placeholder="Search parts, e.g. diaphragm or 3.3" value="${esc(ui.q)}" autocomplete="off" aria-label="Search parts">
+    <div class="chips" role="group" aria-label="Show">${F.map(f=>`<button class="chip" data-act="filter" data-f="${f[0]}" aria-pressed="${ui.filter===f[0]}">${f[1]} <span class="code">${f[2]}</span></button>`).join('')}</div></div>
+    ${html || `<p class="empty">No parts match.</p>`}
+    <p class="fine">Photos are kept on this phone until you send them from the Send tab. “Already in the app” means the part had photos in your parts app when this list was loaded.</p></div>`;
+}
+function installNotice(){
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if(standalone || !installEvt) return '';
+  return `<div class="notice info"><b>Install it on your home screen</b>Then it opens like an app, even with no signal.<span><button class="btn small" data-act="install">Install</button></span></div>`;
+}
+function tile(p, list){
+  const first = p.part && photosFor(p.part);
+  const sop = first && first.length>1 && first[0].id===p.id ? `<span class="tag sop">SOP</span>` : '';
+  const sent = p.sentAt ? `<span class="tag sent">Sent</span>` : '';
+  return `<button class="tile" data-act="photo" data-id="${esc(p.id)}" data-list="${esc(list)}" aria-label="Open photo${p.caption?': '+esc(p.caption):''}"><img src="${esc(p.url)}" alt="" loading="lazy">${sop}${sent}${p.caption?`<span class="cap">${esc(p.caption)}</span>`:''}</button>`;
+}
+function viewUnsorted(){
+  const l = unsorted();
+  return `<div class="stack">
+    <p class="muted">Photos that aren’t linked to a part yet. Tap one to choose its part.</p>
+    ${l.length ? `<div class="gal">${l.map(p=>tile(p,'unsorted')).join('')}</div>` : `<p class="empty">Nothing to sort.</p>`}
+    <div class="row"><label class="btn ghost" for="galIn" role="button" tabindex="0" data-part="">${ICON.gallery}Add from gallery</label></div></div>`;
+}
+function viewSend(){
+  const c = counts(), all = allPhotos(), sent = all.filter(p=>p.sentAt), scope = ui.sendAll ? all : all.filter(p=>!p.sentAt);
+  if(!estimate && navigator.storage && navigator.storage.estimate){ estimate = {}; navigator.storage.estimate().then(e=>{ estimate=e; render(); }).catch(()=>{}); }
+  const sysKeys = [...new Set(PARTS.map(p=>p.sys))];
+  const rows = sysKeys.map(s=>{ const ps=PARTS.filter(p=>p.sys===s), got=ps.filter(p=>c.set.has(p.code)).length, n=ps.reduce((a,p)=>a+photosFor(p.code).length,0); return `<tr><td>${s&&s!=='0'?esc(s)+'. ':''}${esc(SYSTEMS[s]||'')}</td><td class="num ${got===ps.length?'done':''}">${got} / ${ps.length}</td><td class="num">${n}</td></tr>`; }).join('');
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  return `<div class="stack">
+    <section class="stack-sm"><h2 class="sec"><span>Send to your parts app</span><span class="cnt">${c.unsent} not sent</span></h2>
+      <div class="card stack-sm">
+        <p>Makes a zip of the photos on this phone. When you have signal, open your parts app on claude.ai, go to <b>Export</b>, tap <b>Import from the offline app</b> and pick the zip from Downloads. Photos already in the app are skipped.</p>
+        <label class="toggle" for="sendAll"><span><b>Include photos already sent</b><small>${ui.sendAll?'All '+all.length+' photos on this phone':'Only the '+c.unsent+' new ones'}</small></span><input id="sendAll" type="checkbox" ${ui.sendAll?'checked':''}></label>
+        <div class="row"><button class="btn hivis" data-act="zip" ${!scope.length||zipState?'disabled':''}>${ICON.download}Download zip (${scope.length})</button></div>
+        ${zipState?`<p class="fine"><b>${esc(zipState)}</b></p>`:''}
+        <p class="fine">The zip is also ready for the SOP: a folder per system, photos named by part number, and a list of captions.</p>
+      </div></section>
+    ${sent.length?`<section class="stack-sm"><h2 class="sec"><span>Free up space</span></h2><div class="card stack-sm"><p>${sent.length} photo${sent.length===1?' has':'s have'} been sent. Once you’ve imported the zip into your parts app, you can remove ${sent.length===1?'it':'them'} from this phone.</p><div class="row"><button class="btn danger small" data-act="free">${ICON.trash}${confirmFree?'Tap again to remove '+sent.length:'Remove sent photos'}</button></div></div></section>`:''}
+    <section class="stack-sm"><h2 class="sec"><span>Progress</span><span class="cnt">${c.parts} of ${PARTS.length} parts</span></h2>
+      <div class="tbl-wrap"><table><thead><tr><th>System</th><th class="num">Parts done</th><th class="num">On phone</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="fine">Parts done counts photos on this phone and parts that were already in your parts app when the list was loaded.</p></section>
+    <section class="stack-sm"><h2 class="sec"><span>This phone</span></h2><div class="card stack-sm">
+      <dl class="facts">
+        <dt>Offline</dt><dd>${!swSupported?'Not supported in this browser':offlineReady?'Ready. The app opens with no signal':'Getting ready. Keep the signal on for a moment'}</dd>
+        <dt>Home screen</dt><dd>${standalone?'Installed':installEvt?'<button class="btn small" data-act="install">Install</button>':'Use Chrome’s menu → Add to Home screen'}</dd>
+        <dt>Photo storage</dt><dd>${persisted?'Protected from automatic clean-up':persisted===false?'Chrome may clear it if the phone runs out of space. Installing the app helps':'Checking…'}</dd>
+        ${estimate && estimate.quota?`<dt>Space used</dt><dd>${fmtKB(estimate.usage||0)} of ${fmtKB(estimate.quota)}</dd>`:''}
+      </dl></div></section>
+    <section class="stack-sm"><h2 class="sec"><span>Parts list</span></h2><div class="card stack-sm">
+      <p><b>${esc(setup.name||'Parts list')}</b> · ${PARTS.length} parts · loaded ${esc(fmtWhen(setup.loadedAt))}</p>
+      <p class="fine">To refresh it, open the offline app again from your parts app, or load a new setup file. Photos stay.</p>
+      <div class="row"><label class="btn ghost small" for="setupIn" role="button" tabindex="0">${ICON.file}Load setup file</label></div></div></section>
+  </div>`;
+}
+
+/* ================= sheets ================= */
+const closeBtn = `<button class="iconbtn" data-act="close" aria-label="Close">${ICON.close}</button>`;
+const head = (eyebrow, title) => `<div class="sheet-head"><div style="min-width:0"><div class="eyebrow">${eyebrow}</div><h2 id="sheetTitle" class="sheet-title">${title}</h2></div>${closeBtn}</div>`;
+function sheetPart(s){
+  const p = PART[s.code]; if(!p){ return head('Part', 'Not in this list') + `<div class="sheet-body"><p class="muted">This part isn’t in the loaded parts list.</p></div>`; }
+  const l = photosFor(p.code), n = notes[p.code];
+  return head(`${p.sys&&p.sys!=='0'?esc(p.sys)+'. ':''}${esc(SYSTEMS[p.sys]||'')} · ${esc(p.code)}`, esc(p.name)) + `<div class="sheet-body stack">
+    <div class="row"><label class="btn hivis" for="camIn" role="button" tabindex="0" data-part="${esc(p.code)}" style="flex:1 1 180px">${ICON.camera}Take photo</label><label class="btn ghost" for="galIn" role="button" tabindex="0" data-part="${esc(p.code)}">${ICON.gallery}Gallery</label></div>
+    ${l.length ? `<div class="gal">${l.map(x=>tile(x,'part:'+p.code)).join('')}</div>${l.length>1?'<p class="fine">The first photo is the one used for the SOP. Open a photo and tap “Use for SOP” to change it.</p>':''}` : `<p class="empty">No photos on this phone yet.${HAVE[p.code]>0?` Your parts app already had ${HAVE[p.code]}.`:''}</p>`}
+    <dl class="facts"><dt>Class</dt><dd>${ctag(p.cls)} ${esc(CLASS_NAME[p.cls]||'')}</dd>${p.note?`<dt>From the list</dt><dd>${esc(p.note)}</dd>`:''}</dl>
+    <div class="field"><label class="label" for="noteIn">Notes for the SOP</label>
+      <textarea id="noteIn" class="input" data-code="${esc(p.code)}" rows="3" placeholder="Where it is, what to check, how to change it">${esc(n?n.note:'')}</textarea><span class="saved" id="noteSaved"></span></div>
+  </div>`;
+}
+function listFor(key){ if(key==='unsorted') return unsorted().map(p=>p.id); if(key && key.indexOf('part:')===0) return photosFor(key.slice(5)).map(p=>p.id); return []; }
+function sheetPhoto(s){
+  const p = getPhoto(s.id);
+  if(!p) return head('Photo', 'Photo removed') + `<div class="sheet-body"><p class="muted">This photo isn’t here any more.</p></div>`;
+  const list = listFor(s.list), i = list.indexOf(p.id), part = p.part && PART[p.part];
+  const isSop = part && photosFor(p.part)[0].id===p.id;
+  const pl = PLACE(p.parlour), pts = pl && pl.points ? Math.min(200, +pl.points||0) : 0;
+  const places = PLACES.map(x=>[x.id, `<span class="pm">${esc(x.short)}</span>${esc(x.name||'')}`]).concat([['site','Shared'],['','Not set']]);
+  return head(part ? `${esc(part.code)} · ${esc(part.name)}` : 'Unsorted', list.length>1 ? `Photo ${i+1} of ${list.length}` : 'Photo') + `<div class="sheet-body stack">
+    <figure class="viewer"><img src="${esc(p.url)}" alt="${esc(p.caption || (part?part.name:'Unsorted photo'))}"></figure>
+    ${list.length>1?`<div class="vnav"><button class="btn ghost small" data-act="step" data-d="-1" ${i<=0?'disabled':''} aria-label="Previous photo">${ICON.left}</button><span>${p.sentAt?'Sent '+esc(fmtWhen(p.sentAt)):'Not sent yet'}</span><button class="btn ghost small" data-act="step" data-d="1" ${i>=list.length-1?'disabled':''} aria-label="Next photo">${ICON.right}</button></div>`:''}
+    <div class="row">
+      ${part?`<button class="btn ${isSop?'hivis':'ghost'} small" data-act="pick" data-id="${esc(p.id)}">${isSop?ICON.starOn:ICON.star}${isSop?'SOP photo':'Use for SOP'}</button>`:''}
+      <button class="btn ${part?'ghost':'hivis'} small" data-act="move" data-id="${esc(p.id)}">${ICON.move}${part?'Move to another part':'Choose part'}</button>
+      <button class="btn danger small" data-act="del" data-id="${esc(p.id)}">${ICON.trash}${confirmDel.id===p.id?'Tap again to delete':'Delete'}</button></div>
+    <div class="field"><label class="label" for="capIn">Caption</label><input id="capIn" class="input" type="text" data-id="${esc(p.id)}" value="${esc(p.caption||'')}" placeholder="e.g. Diaphragm seated in the pulsator"></div>
+    <div class="field"><span class="label">Where</span><div class="chips">${places.map(([k,l])=>`<button class="chip" data-act="ph-place" data-id="${esc(p.id)}" data-p="${esc(k)}" aria-pressed="${(p.parlour||'')===k}">${l}</button>`).join('')}</div></div>
+    ${pts?`<div class="field"><label class="label" for="ptIn">Milking point</label><select id="ptIn" class="input" data-id="${esc(p.id)}"><option value="">Not at one point</option>${Array.from({length:pts},(_,k)=>`<option value="${k+1}" ${p.point===k+1?'selected':''}>Point ${k+1}</option>`).join('')}</select></div>`:''}
+    <p class="fine">${[fmtWhen(p.takenAt), p.w?`${p.w} × ${p.h}`:'', p.bytes?fmtKB(p.bytes):'', 'Saved on this phone'].filter(Boolean).join(' · ')}</p>
+  </div>`;
+}
+function pickRow(p){ return `<li><button data-act="assign" data-code="${esc(p.code)}">${thumbHTML(p.code, 52)}<span class="pname"><span class="code">${esc(p.code)}</span>${esc(p.name)}</span>${ctag(p.cls)}</button></li>`; }
+function pickResults(s){
+  const q = (s.q||'').trim().toLowerCase();
+  if(!q){
+    const rec = recent.filter(c=>PART[c]), sysKeys=[...new Set(PARTS.map(p=>p.sys))];
+    return `<div class="stack-sm">${rec.length?`<div class="label">Recent</div><div class="chips">${rec.map(c=>`<button class="chip" data-act="assign" data-code="${esc(c)}"><span class="code">${esc(c)}</span>${esc(PART[c].name)}</button>`).join('')}</div>`:''}
+      <div class="label">Or pick from the list</div>
+      ${sysKeys.map(sy=>`<details ${rec.length?'':'open'}><summary class="h4" style="cursor:pointer;padding:6px 0">${sy&&sy!=='0'?esc(sy)+'. ':''}${esc(SYSTEMS[sy]||'')}</summary><ul class="picklist">${PARTS.filter(p=>p.sys===sy).map(pickRow).join('')}</ul></details>`).join('')}</div>`;
+  }
+  const l = PARTS.filter(p=>(p.code+' '+p.name+' '+p.note).toLowerCase().includes(q)).slice(0,30);
+  return l.length ? `<ul class="picklist">${l.map(pickRow).join('')}</ul>` : `<p class="muted">No part matches “${esc(s.q)}”. Use “Sort later” and link it afterwards.</p>`;
+}
+function sheetPick(s){
+  const prev = s.ids.map(getPhoto).filter(Boolean);
+  return head(prev.length>1?`${prev.length} photos`:'New photo', 'Which part is this?') + `<div class="sheet-body stack">
+    <div class="preview">${prev.map(p=>`<img src="${esc(p.url)}" alt="">`).join('')}</div>
+    <input id="pkQ" class="input" type="search" placeholder="Search, e.g. claw or 1.4" value="${esc(s.q||'')}" autocomplete="off" aria-label="Search parts">
+    <div id="pkRes">${pickResults(s)}</div>
+    <div class="row"><button class="btn ghost" data-act="sortlater">${s.fresh?'Sort later':'Cancel'}</button></div></div>`;
+}
+const SHEETS = {part:sheetPart, photo:sheetPhoto, pick:sheetPick};
+function openSheet(s){ if(!sheet) lastFocus=document.activeElement; sheet=s; renderSheet(true); const c=$('#layer .iconbtn[data-act="close"]'); if(c) c.focus({preventScroll:true}); }
+function renderSheet(enter){
+  if(!sheet) return;
+  const L=$('#layer'), old=L.querySelector('.sheet'), top=old?old.scrollTop:0;
+  L.hidden=false;
+  L.innerHTML = `<div class="scrim" data-act="close"></div><section class="sheet${enter?' enter':''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">${SHEETS[sheet.type](sheet)}</section>`;
+  if(!enter) L.querySelector('.sheet').scrollTop = top;
+  document.documentElement.classList.add('locked');
+}
+function closeSheet(){ sheet=null; const L=$('#layer'); L.hidden=true; L.innerHTML=''; document.documentElement.classList.remove('locked'); if(lastFocus && document.contains(lastFocus)) try{ lastFocus.focus({preventScroll:true}); }catch(e){} lastFocus=null; }
+let toastTimer=null, toastActs=[];
+function toast(msg, acts){
+  const t=$('#toast'); toastActs = acts||[];
+  t.innerHTML = `<span>${esc(msg)}</span>${toastActs.map((a,i)=>`<button data-toast="${i}">${esc(a.label)}</button>`).join('')}`;
+  t.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ t.hidden=true; }, toastActs.length?6500:3800);
+}
+
+/* ================= export ================= */
+const safe = s => String(s).replace(/①/g,'1').replace(/②/g,'2').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').trim();
+const csvCell = v => { const s=String(v==null?'':v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+async function exportZip(){
+  if(!window.JSZip){ toast('The zip tool didn’t load. Reload the app once with signal.'); return; }
+  const take = p => ui.sendAll || !p.sentAt;
+  const items = [];
+  PARTS.forEach(pt=>{ photosFor(pt.code).forEach((p,i)=>{ if(take(p)) items.push({pt, p, i}); }); });
+  unsorted().forEach((p,i)=>{ if(take(p)) items.push({pt:null, p, i}); });
+  if(!items.length){ toast('There are no photos to send.'); return; }
+  zipState = `Packing 0 of ${items.length}…`; render();
+  try{
+    const zip = new window.JSZip(), rows=[['Code','Part','System','Class','File','SOP photo','Place','Point','Caption','Taken on']], manifest=[];
+    for(let k=0;k<items.length;k++){
+      const {pt, p, i} = items[k], rec = recs.get(p.id); if(!rec) continue;
+      const folder = pt ? safe(`${pt.sys||0} ${SYSTEMS[pt.sys]||''}`) : 'Unsorted';
+      const file = folder + '/' + (pt ? safe(`${pt.code} ${pt.name}${i?` (${i+1})`:''}`) : `Unsorted ${i+1}`) + ` [${p.id}].jpg`;
+      zip.file(file, rec.blob, {binary:true});
+      rows.push([pt?pt.code:'', pt?pt.name:'', pt?SYSTEMS[pt.sys]||'':'', pt?pt.cls:'', file, pt&&i===0?'yes':'', plab(p.parlour), p.point||'', p.caption||'', fmtWhen(p.takenAt)]);
+      manifest.push({id:p.id, file, part:pt?pt.code:null, caption:p.caption||'', parlour:p.parlour||null, point:p.point||null, takenAt:p.takenAt, w:p.w, h:p.h, pick:!!p.pick});
+      if(k%3===2){ zipState = `Packing ${k+1} of ${items.length}…`; render(); await new Promise(r=>setTimeout(r,0)); }
+    }
+    const usedNotes = {}; Object.keys(notes).forEach(c=>{ if(PART[c] && notes[c] && notes[c].note) usedNotes[c]=notes[c]; });
+    zip.file('photo-list.csv', '﻿'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n'));
+    zip.file('parts-camera.json', JSON.stringify({kind:'parts-camera-export', v:1, list:setup.name||'', exportedAt:new Date().toISOString(), photos:manifest, notes:usedNotes}, null, 1));
+    zipState = 'Building the zip…'; render();
+    const blob = await zip.generateAsync({type:'blob', compression:'STORE', mimeType:'application/zip'});
+    const name = `Parts photos ${todayStr()} ${String(Date.now()).slice(-4)}.zip`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 15000);
+    const now = new Date().toISOString();
+    items.forEach(({p})=>{ const r=recs.get(p.id); if(r && !r.meta.sentAt){ r.meta.sentAt=now; phPut(r).catch(()=>{}); } });
+    zipState = null; render();
+    toast(`Zip saved to Downloads (${fmtKB(blob.size)}). ${items.length} photo${items.length===1?'':'s'} marked as sent.`);
+  }catch(e){ zipState=null; render(); toast('Making the zip failed. Free up some space and try again.'); }
+}
+async function freeSent(){
+  const ids = [...recs.values()].filter(r=>r.meta.sentAt).map(r=>r.id);
+  for(const id of ids){ const r=recs.get(id); recs.delete(id); URL.revokeObjectURL(r.url); try{ await phDel(id); }catch(e){} }
+  estimate = null; render(); toast(`${ids.length} sent photo${ids.length===1?'':'s'} removed from this phone`);
+}
+
+/* ================= events ================= */
+document.addEventListener('click', e=>{
+  const tb = e.target.closest('[data-toast]'); if(tb){ const a=toastActs[+tb.dataset.toast]; $('#toast').hidden=true; if(a) a.fn(); return; }
+  const lab = e.target.closest('label[for="camIn"],label[for="galIn"]'); if(lab){ targetPart = lab.dataset.part || null; return; }
+  const el = e.target.closest('[data-act]'); if(!el || el.disabled) return;
+  const d = el.dataset;
+  switch(d.act){
+    case 'close': closeSheet(); break;
+    case 'here': here = here===d.p ? '' : d.p; store.set('here', here); render(); toast(here?`New photos are tagged ${plab(here)}`:'New photos have no place tag'); break;
+    case 'filter': ui.filter=d.f; store.set('filter', ui.filter); render(); break;
+    case 'install': if(installEvt){ const ev=installEvt; installEvt=null; ev.prompt(); ev.userChoice.finally(()=>render()); } break;
+    case 'part': openSheet({type:'part', code:d.code}); break;
+    case 'photo': confirmDel.id=null; openSheet({type:'photo', id:d.id, list:d.list}); break;
+    case 'step': { const l=listFor(sheet.list), i=l.indexOf(sheet.id)+(+d.d); if(l[i]){ sheet.id=l[i]; confirmDel.id=null; renderSheet(); } break; }
+    case 'pick': setPick(d.id); break;
+    case 'move': sheet = {type:'pick', ids:[d.id], q:'', back:{type:'photo', id:d.id, list:sheet.list}}; renderSheet(true); break;
+    case 'assign': {
+      const code=d.code, ids=sheet.ids.slice(); ids.forEach(id=>updatePhoto(id, {part:code, pick:false})); pushRecent(code);
+      const back = sheet.back; closeSheet();
+      toast(`${ids.length>1?ids.length+' photos':'Photo'} saved to ${code} ${PART[code].name}`, [{label:'Open part', fn:()=>openSheet({type:'part', code})}]);
+      if(back && back.list==='unsorted' && unsorted().length) openSheet({type:'photo', id:unsorted()[0].id, list:'unsorted'});
+      break; }
+    case 'sortlater': { const back=sheet.back, fresh=sheet.fresh; closeSheet(); if(back) openSheet(back); else if(fresh) toast('Kept in Unsorted', [{label:'View', fn:()=>{ location.hash='unsorted'; }}]); break; }
+    case 'ph-place': { const v=d.p||null, p=getPhoto(d.id); const patch={parlour:v}; if(!p || p.parlour!==v) patch.point=null; updatePhoto(d.id, patch); break; }
+    case 'del': {
+      if(confirmDel.id!==d.id){ confirmDel.id=d.id; clearTimeout(confirmDel.t); confirmDel.t=setTimeout(()=>{ confirmDel.id=null; render(); }, 4000); renderSheet(); break; }
+      confirmDel.id=null; const l=listFor(sheet.list), i=l.indexOf(d.id); deletePhoto(d.id);
+      const next=l[i+1]||l[i-1]; if(next){ sheet.id=next; renderSheet(); } else closeSheet(); toast('Photo deleted'); break; }
+    case 'zip': exportZip(); break;
+    case 'free': if(!confirmFree){ confirmFree=true; render(); setTimeout(()=>{ confirmFree=false; render(); }, 4000); } else { confirmFree=false; freeSent(); } break;
+  }
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && sheet){ closeSheet(); return; }
+  const lab = e.target.closest && e.target.closest('label[role="button"]');
+  if(lab && (e.key==='Enter' || e.key===' ')){ e.preventDefault(); targetPart = lab.dataset.part || null; const inp=document.getElementById(lab.htmlFor); if(inp) inp.click(); }
+});
+document.addEventListener('input', e=>{
+  const el=e.target;
+  if(el.id==='q'){ ui.q=el.value; keepFocus($('#main'), ()=>{ $('#main').innerHTML=viewParts(); }); return; }
+  if(el.id==='pkQ' && sheet && sheet.type==='pick'){ sheet.q=el.value; $('#pkRes').innerHTML=pickResults(sheet); return; }
+  if(el.id==='capIn'){ saveCaption(el.dataset.id, el.value); return; }
+  if(el.id==='noteIn'){ saveNote(el.dataset.code, el.value); return; }
+});
+document.addEventListener('change', async e=>{
+  const el=e.target;
+  if(el.id==='sendAll'){ ui.sendAll=el.checked; render(); return; }
+  if(el.id==='ptIn'){ updatePhoto(el.dataset.id, {point: el.value?+el.value:null}); return; }
+  if(el.id==='setupIn'){ const f=el.files&&el.files[0]; el.value=''; if(!f) return; try{ await takeSetup(JSON.parse(await f.text()), 'file'); }catch(err){ toast('That file isn’t a parts list setup file.'); } return; }
+  if(el.id==='camIn' || el.id==='galIn'){
+    const files=[...(el.files||[])]; el.value=''; if(!files.length) return;
+    const part = targetPart && PART[targetPart] ? targetPart : null; targetPart=null;
+    const ids = await addFiles(files, part);
+    if(!ids.length) return;
+    if(part){
+      toast(`${ids.length>1?ids.length+' photos':'Photo'} saved to ${part} ${PART[part].name}`, [{label:'Details', fn:()=>openSheet({type:'photo', id:ids[ids.length-1], list:'part:'+part})}, {label:'Undo', fn:()=>{ ids.forEach(deletePhoto); toast('Removed'); }}]);
+      if(sheet && sheet.type==='part') renderSheet();
+    } else if(ids.length===1 || el.id==='camIn'){
+      if(sheet) closeSheet(); openSheet({type:'pick', ids, q:'', fresh:true});
+    } else {
+      toast(`${ids.length} photos added to Unsorted`, [{label:'Sort now', fn:()=>{ location.hash='unsorted'; }}]);
+    }
+  }
+});
+window.addEventListener('hashchange', ()=>{ if(location.hash.indexOf('#setup=')===0){ readHash(); return; } if(sheet) closeSheet(); estimate=null; render(); window.scrollTo(0,0); });
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); installEvt=e; render(); });
+window.addEventListener('appinstalled', ()=>{ installEvt=null; render(); toast('Installed. Open it from your home screen, even with no signal.'); });
+
+/* ================= start ================= */
+async function start(){
+  idb = await idbOpen();
+  if(idb){
+    try{ const s = await kvGet('setup'); if(validSetup(s)) applySetup(s); }catch(e){}
+    try{ notes = (await kvGet('notes')) || {}; }catch(e){}
+    try{ ((await phAll())||[]).forEach(r=>{ if(r && r.blob) recs.set(r.id, {id:r.id, blob:r.blob, meta:r.meta||{}, url:URL.createObjectURL(r.blob)}); }); }catch(e){}
+  }
+  if(navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(v=>{ persisted=v; render(); }).catch(()=>{});
+  await readHash();
+  render();
+  if(swSupported){
+    navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready).then(()=>{ offlineReady=true; render(); }).catch(()=>{ swSupported=false; render(); });
+  }
+}
+render();
+start();
+})();
+</script>
+</body>
+</html>
