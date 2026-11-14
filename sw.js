@@ -1,6 +1,6 @@
 /* Keeps the app on the phone so it opens with no signal.
    Bump VERSION on every release so phones pick up the new files. */
-const VERSION = 'parts-camera-v1';
+const VERSION = 'parts-camera-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './jszip.min.js',
   './icon-192.png', './icon-512.png',

@@ -153,6 +153,9 @@ textarea.input{resize:vertical;min-height:80px}
 .cam svg{width:24px;height:24px}
 .tools{display:grid;gap:10px}
 .empty{color:var(--ink-2);padding:14px 4px}
+.err{color:var(--bad);font-weight:600}
+.addrow{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.pill.new{background:var(--accent-soft);color:var(--accent);border-color:transparent}
 
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
 .tile{position:relative;aspect-ratio:1;max-width:100%;border-radius:6px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line);padding:0}
@@ -270,6 +273,38 @@ function saveFailed(){ toast('This phone’s storage refused the change. Free up
 
 /* ================= the parts list (loaded from a setup link or file) ================= */
 let setup = null, PARTS = [], PART = {}, SYSTEMS = {}, CLASS_NAME = {}, PLACES = [], HAVE = {};
+let BASE = [], localParts = [];
+const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$/;
+const norm = s => String(s||'').trim().toLowerCase();
+function rebuildParts(){
+  const extra = localParts.filter(l=>!BASE.some(b=>b.code===l.code)).map(l=>({code:l.code, name:String(l.name), cls:String(l.cls||''), note:String(l.note||''), sys:String(l.sys==null?'0':l.sys), added:true, local:true}));
+  PARTS = BASE.concat(extra);
+  PART = Object.fromEntries(PARTS.map(p=>[p.code,p]));
+}
+function nextCode(more){ let max=0; BASE.concat(localParts, more||[]).forEach(p=>{ const m=/^N(\d+)$/.exec(p.code); if(m) max=Math.max(max,+m[1]); }); return 'N'+(max+1); }
+const saveLocalParts = () => kvPut('custom', localParts).catch(saveFailed);
+function applyMap(map){
+  recs.forEach(r=>{ const to=map[r.meta.part]; if(to){ r.meta.part=to; phPut(r).catch(()=>{}); } });
+  const nn = {}; Object.keys(notes).forEach(c=>{ const to=map[c]||c; if(!nn[to] || !nn[to].note) nn[to]=notes[c]; });
+  notes = nn; kvPut('notes', notes).catch(()=>{});
+}
+/* A part added on this phone that later arrives in the parts list from the parts app is merged, so nothing is doubled.
+   All renumbering is worked out first and applied in one pass, so a photo can't be moved twice. */
+async function reconcileLocal(){
+  const map = {}, keep = [];
+  for(const l of localParts){
+    const nm = norm(l.name), sameCode = BASE.find(b=>b.code===l.code);
+    const sameName = BASE.find(b=>b.added && norm(b.name)===nm && String(b.sys)===String(l.sys));
+    if(sameCode && norm(sameCode.name)===nm) continue;
+    if(sameName){ map[l.code]=sameName.code; continue; }
+    if(sameCode){ const nc = nextCode(keep.concat(Object.values(map).map(c=>({code:c})))); map[l.code]=nc; keep.push(Object.assign({}, l, {code:nc})); continue; }
+    keep.push(l);
+  }
+  const moved = Object.keys(map).length;
+  if(moved) applyMap(map);
+  if(moved || keep.length!==localParts.length){ localParts = keep; await saveLocalParts(); }
+  rebuildParts();
+}
 const PLACE = id => PLACES.find(p=>p.id===id);
 function validSetup(s){
   return s && s.kind==='parts-camera-setup' && Array.isArray(s.parts) && s.parts.length>0 && s.parts.length<2000 &&
@@ -281,8 +316,8 @@ function applySetup(s){
   CLASS_NAME = (s.classes && typeof s.classes==='object') ? s.classes : {};
   PLACES = Array.isArray(s.places) ? s.places.filter(p=>p && /^[a-z0-9]{1,12}$/.test(p.id)).slice(0,6) : [];
   HAVE = (s.have && typeof s.have==='object') ? s.have : {};
-  PARTS = s.parts.map(p=>({code:p.code, name:String(p.name), cls:String(p.cls||''), note:String(p.note||''), sys:String(p.sys==null?'':p.sys)}));
-  PART = Object.fromEntries(PARTS.map(p=>[p.code,p]));
+  BASE = s.parts.map(p=>({code:p.code, name:String(p.name), cls:String(p.cls||''), note:String(p.note||''), sys:String(p.sys==null?'':p.sys), added:!!p.added}));
+  rebuildParts();
   $('#eyebrow').textContent = (s.name ? s.name+' · ' : '') + 'Offline';
 }
 function b64uToBytes(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='='; const bin=atob(s); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
@@ -299,6 +334,7 @@ async function takeSetup(s, how){
   s.loadedAt = new Date().toISOString();
   applySetup(s);
   try{ await kvPut('setup', s); }catch(e){ saveFailed(); }
+  await reconcileLocal();
   render();
   toast(`Parts list loaded${s.name?': '+s.name:''}, ${s.parts.length} parts`);
   return true;
@@ -382,6 +418,7 @@ const capTimers = {};
 function saveCaption(id, text){ const r=recs.get(id); if(r) r.meta.caption=text; clearTimeout(capTimers[id]); capTimers[id]=setTimeout(()=>updatePhoto(id,{caption:text}), 600); }
 
 /* ================= rendering ================= */
+const later = fn => setTimeout(fn, 0);
 let raf = 0;
 function render(){ if(raf) return; raf = requestAnimationFrame(()=>{ raf=0; renderNow(); }); }
 function keepFocus(container, fn){
@@ -438,11 +475,11 @@ function viewParts(){
     const got = all.filter(p=>c.set.has(p.code)).length;
     html += `<section class="stack-sm"><h2 class="sec"><span><span class="sysno">${s==='0'?'·':esc(s)}</span>${esc(SYSTEMS[s]||'')}</span><span class="cnt ${got===all.length?'full':''}">${got} / ${all.length}</span></h2>
       <ul class="plist">${items.map(p=>{ const inApp = HAVE[p.code]>0 && !c.mine.has(p.code);
-        return `<li><button class="prow" data-act="part" data-code="${esc(p.code)}">${thumbHTML(p.code)}<span class="pname"><span class="code">${esc(p.code)} · ${ctag(p.cls)}</span>${esc(p.name)}${p.note?`<small>${esc(p.note)}</small>`:''}${inApp?`<span class="inapp">${ICON.check.replace('<svg','<svg width="13" height="13"')}${HAVE[p.code]} already in the app</span>`:''}</span></button><label class="cam" for="camIn" role="button" tabindex="0" data-part="${esc(p.code)}" aria-label="Take a photo of ${esc(p.name)}">${ICON.camera}</label></li>`; }).join('')}</ul></section>`;
+        return `<li><button class="prow" data-act="part" data-code="${esc(p.code)}">${thumbHTML(p.code)}<span class="pname"><span class="code">${esc(p.code)} · ${ctag(p.cls)}${p.added?' <span class="pill new">Added</span>':''}</span>${esc(p.name)}${p.note?`<small>${esc(p.note)}</small>`:''}${inApp?`<span class="inapp">${ICON.check.replace('<svg','<svg width="13" height="13"')}${HAVE[p.code]} already in the app</span>`:''}</span></button><label class="cam" for="camIn" role="button" tabindex="0" data-part="${esc(p.code)}" aria-label="Take a photo of ${esc(p.name)}">${ICON.camera}</label></li>`; }).join('')}</ul></section>`;
   });
   const F = [['all','All',PARTS.length],['missing','No photo yet',PARTS.length-c.parts],['done','Has a photo',c.parts]];
   return `<div class="stack">${installNotice()}
-    <div class="tools"><input id="q" class="input" type="search" placeholder="Search parts, e.g. diaphragm or 3.3" value="${esc(ui.q)}" autocomplete="off" aria-label="Search parts">
+    <div class="tools"><div class="addrow"><input id="q" class="input" type="search" placeholder="Search parts, e.g. diaphragm or 3.3" value="${esc(ui.q)}" autocomplete="off" aria-label="Search parts" style="flex:1 1 150px;width:auto;min-width:0"><button class="btn ghost" data-act="np-new">+ New part</button></div>
     <div class="chips" role="group" aria-label="Show">${F.map(f=>`<button class="chip" data-act="filter" data-f="${f[0]}" aria-pressed="${ui.filter===f[0]}">${f[1]} <span class="code">${f[2]}</span></button>`).join('')}</div></div>
     ${html || `<p class="empty">No parts match.</p>`}
     <p class="fine">Photos are kept on this phone until you send them from the Send tab. “Already in the app” means the part had photos in your parts app when this list was loaded.</p></div>`;
@@ -507,7 +544,8 @@ function sheetPart(s){
   return head(`${p.sys&&p.sys!=='0'?esc(p.sys)+'. ':''}${esc(SYSTEMS[p.sys]||'')} · ${esc(p.code)}`, esc(p.name)) + `<div class="sheet-body stack">
     <div class="row"><label class="btn hivis" for="camIn" role="button" tabindex="0" data-part="${esc(p.code)}" style="flex:1 1 180px">${ICON.camera}Take photo</label><label class="btn ghost" for="galIn" role="button" tabindex="0" data-part="${esc(p.code)}">${ICON.gallery}Gallery</label></div>
     ${l.length ? `<div class="gal">${l.map(x=>tile(x,'part:'+p.code)).join('')}</div>${l.length>1?'<p class="fine">The first photo is the one used for the SOP. Open a photo and tap “Use for SOP” to change it.</p>':''}` : `<p class="empty">No photos on this phone yet.${HAVE[p.code]>0?` Your parts app already had ${HAVE[p.code]}.`:''}</p>`}
-    <dl class="facts"><dt>Class</dt><dd>${ctag(p.cls)} ${esc(CLASS_NAME[p.cls]||'')}</dd>${p.note?`<dt>From the list</dt><dd>${esc(p.note)}</dd>`:''}</dl>
+    <dl class="facts"><dt>Class</dt><dd>${ctag(p.cls)} ${esc(p.added && !p.cls ? 'Not set' : (CLASS_NAME[p.cls]||'Not set'))}</dd>${p.note?`<dt>${p.added?'Note':'From the list'}</dt><dd>${esc(p.note)}</dd>`:''}${p.added?`<dt>Added</dt><dd>${p.local?'On this phone. It goes to your parts app with the next zip':'In your parts app'}</dd>`:''}</dl>
+    ${p.local?`<div class="row"><button class="btn ghost small" data-act="np-edit" data-code="${esc(p.code)}">Edit part</button><button class="btn danger small" data-act="np-del" data-code="${esc(p.code)}">${confirmPart===p.code?'Tap again to remove':'Remove part'}</button></div>`:''}
     <div class="field"><label class="label" for="noteIn">Notes for the SOP</label>
       <textarea id="noteIn" class="input" data-code="${esc(p.code)}" rows="3" placeholder="Where it is, what to check, how to change it">${esc(n?n.note:'')}</textarea><span class="saved" id="noteSaved"></span></div>
   </div>`;
@@ -543,7 +581,7 @@ function pickResults(s){
       ${sysKeys.map(sy=>`<details ${rec.length?'':'open'}><summary class="h4" style="cursor:pointer;padding:6px 0">${sy&&sy!=='0'?esc(sy)+'. ':''}${esc(SYSTEMS[sy]||'')}</summary><ul class="picklist">${PARTS.filter(p=>p.sys===sy).map(pickRow).join('')}</ul></details>`).join('')}</div>`;
   }
   const l = PARTS.filter(p=>(p.code+' '+p.name+' '+p.note).toLowerCase().includes(q)).slice(0,30);
-  return l.length ? `<ul class="picklist">${l.map(pickRow).join('')}</ul>` : `<p class="muted">No part matches “${esc(s.q)}”. Use “Sort later” and link it afterwards.</p>`;
+  return l.length ? `<ul class="picklist">${l.map(pickRow).join('')}</ul>` : `<div class="stack-sm"><p class="muted">No part matches “${esc(s.q)}”.</p><div class="row"><button class="btn hivis small" data-act="np-new" data-from="pick">+ Add “${esc(s.q.trim().slice(0,40))}” as a new part</button></div></div>`;
 }
 function sheetPick(s){
   const prev = s.ids.map(getPhoto).filter(Boolean);
@@ -551,9 +589,49 @@ function sheetPick(s){
     <div class="preview">${prev.map(p=>`<img src="${esc(p.url)}" alt="">`).join('')}</div>
     <input id="pkQ" class="input" type="search" placeholder="Search, e.g. claw or 1.4" value="${esc(s.q||'')}" autocomplete="off" aria-label="Search parts">
     <div id="pkRes">${pickResults(s)}</div>
-    <div class="row"><button class="btn ghost" data-act="sortlater">${s.fresh?'Sort later':'Cancel'}</button></div></div>`;
+    <div class="row"><button class="btn ghost" data-act="np-new" data-from="pick">+ New part</button><button class="btn ghost" data-act="sortlater">${s.fresh?'Sort later':'Cancel'}</button></div></div>`;
 }
-const SHEETS = {part:sheetPart, photo:sheetPhoto, pick:sheetPick};
+let confirmPart = null;
+function sheetNewPart(s){
+  const e = s.edit ? PART[s.edit] : null;
+  const prev = (s.ids||[]).map(getPhoto).filter(Boolean);
+  const sysKeys = [...new Set(BASE.map(p=>p.sys))];
+  const sysSel = s.sys!=null ? String(s.sys) : e ? e.sys : String(store.get('npSys', sysKeys.includes('1')?'1':sysKeys[0]));
+  const cls = s.cls!=null ? s.cls : e ? e.cls : '';
+  return head(e ? `${esc(e.code)} · added on this phone` : prev.length ? 'Not on the list' : 'Not on the list', e ? 'Edit part' : 'New part') + `<div class="sheet-body stack">
+    ${prev.length?`<div class="preview">${prev.map(p=>`<img src="${esc(p.url)}" alt="">`).join('')}</div>`:''}
+    <div class="field"><label class="label" for="npName">Name</label><input id="npName" class="input" type="text" maxlength="80" value="${esc(s.name!=null?s.name:e?e.name:'')}" placeholder="e.g. Teat spray nozzle"></div>
+    <div class="field"><label class="label" for="npSys">System</label><select id="npSys" class="input">${sysKeys.map(k=>`<option value="${esc(k)}" ${sysSel===k?'selected':''}>${k&&k!=='0'?esc(k)+'. ':''}${esc(SYSTEMS[k]||'')}</option>`).join('')}</select></div>
+    ${e?'':`<div class="field"><label class="label" for="npCode">Number (optional)</label><input id="npCode" class="input" type="text" maxlength="16" value="${esc(s.code||'')}" placeholder="Leave empty to use ${nextCode()}" autocapitalize="characters"><span class="fine">Use the list’s next number if you know it, e.g. 1.14.</span></div>`}
+    <div class="field"><span class="label">Class</span><div class="chips">${['A','B','C',''].map(k=>`<button class="chip" data-act="np-cls" data-c="${k}" aria-pressed="${cls===k}">${k?ctag(k)+' '+esc(CLASS_NAME[k]||''):'Not sure'}</button>`).join('')}</div></div>
+    <div class="field"><label class="label" for="npNote">Note (optional)</label><input id="npNote" class="input" type="text" maxlength="200" value="${esc(s.note!=null?s.note:e?e.note:'')}" placeholder="e.g. 2 in store, or where it is"></div>
+    ${s.err?`<p class="err">${esc(s.err)}</p>`:''}
+    <div class="row"><button class="btn hivis" data-act="np-save">${e?'Save changes':prev.length?'Add part and save photo':'Add part'}</button><button class="btn ghost" data-act="np-cancel">Cancel</button></div>
+  </div>`;
+}
+function npSave(){
+  const s = sheet, e = s.edit ? PART[s.edit] : null;
+  const name = ($('#npName').value||'').trim().replace(/\s+/g,' '), sys = $('#npSys').value, note = ($('#npNote').value||'').trim();
+  const cls = s.cls!=null ? s.cls : e ? e.cls : '';
+  if(!name){ s.err='Give the part a name.'; renderSheet(); return; }
+  if(e){
+    const l = localParts.find(x=>x.code===e.code); if(!l) return;
+    Object.assign(l, {name, sys, cls, note}); saveLocalParts(); rebuildParts(); store.set('npSys', sys);
+    closeSheet(); render(); openSheet({type:'part', code:l.code}); toast('Part updated'); return;
+  }
+  const typed = ($('#npCode') ? $('#npCode').value : '').trim();
+  if(typed && !CODE_RE.test(typed)){ s.err='Use letters, numbers, dots or dashes for the number, e.g. 1.14.'; renderSheet(); return; }
+  if(typed && PART[typed]){ s.err=`${typed} is already “${PART[typed].name}”. Pick another number or leave it empty.`; renderSheet(); return; }
+  const dup = PARTS.find(p=>norm(p.name)===norm(name));
+  if(dup && !s.dupOk){ s.dupOk=true; s.err=`“${dup.name}” is already on the list as ${dup.code}. Tap Add part again to add it anyway.`; renderSheet(); return; }
+  const code = typed || nextCode();
+  localParts.push({code, name, sys, cls, note, at:new Date().toISOString()});
+  saveLocalParts(); rebuildParts(); store.set('npSys', sys); pushRecent(code);
+  const ids = s.ids || []; ids.forEach(id=>updatePhoto(id, {part:code, pick:false}));
+  closeSheet(); render(); openSheet({type:'part', code});
+  toast(ids.length ? `Added ${code} ${name} with ${ids.length>1?ids.length+' photos':'the photo'}` : `Added ${code} ${name}. Take its photo now.`);
+}
+const SHEETS = {part:sheetPart, photo:sheetPhoto, pick:sheetPick, newpart:sheetNewPart};
 function openSheet(s){ if(!sheet) lastFocus=document.activeElement; sheet=s; renderSheet(true); const c=$('#layer .iconbtn[data-act="close"]'); if(c) c.focus({preventScroll:true}); }
 function renderSheet(enter){
   if(!sheet) return;
@@ -595,7 +673,8 @@ async function exportZip(){
     }
     const usedNotes = {}; Object.keys(notes).forEach(c=>{ if(PART[c] && notes[c] && notes[c].note) usedNotes[c]=notes[c]; });
     zip.file('photo-list.csv', '﻿'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n'));
-    zip.file('parts-camera.json', JSON.stringify({kind:'parts-camera-export', v:1, list:setup.name||'', exportedAt:new Date().toISOString(), photos:manifest, notes:usedNotes}, null, 1));
+    zip.file('parts-camera.json', JSON.stringify({kind:'parts-camera-export', v:1, list:setup.name||'', exportedAt:new Date().toISOString(), photos:manifest, notes:usedNotes,
+      customParts: localParts.map(l=>({code:l.code, name:l.name, sys:l.sys, cls:l.cls||'', note:l.note||'', at:l.at||''}))}, null, 1));
     zipState = 'Building the zip…'; render();
     const blob = await zip.generateAsync({type:'blob', compression:'STORE', mimeType:'application/zip'});
     const name = `Parts photos ${todayStr()} ${String(Date.now()).slice(-4)}.zip`;
@@ -642,6 +721,23 @@ document.addEventListener('click', e=>{
       confirmDel.id=null; const l=listFor(sheet.list), i=l.indexOf(d.id); deletePhoto(d.id);
       const next=l[i+1]||l[i-1]; if(next){ sheet.id=next; renderSheet(); } else closeSheet(); toast('Photo deleted'); break; }
     case 'zip': exportZip(); break;
+    case 'np-new': {
+      const from = d.from==='pick' && sheet ? sheet : null;
+      const ns = {type:'newpart', ids: from ? from.ids : [], from, name: from ? (from.q||'').trim() : (ui.q||'').trim()};
+      if(sheet) sheet = ns, renderSheet(true); else openSheet(ns);
+      later(()=>{ const n=$('#npName'); if(n && !n.value) n.focus(); });
+      break; }
+    case 'np-edit': sheet = {type:'newpart', edit:d.code, ids:[]}; renderSheet(true); break;
+    case 'np-cls': sheet.cls = d.c; renderSheet(); break;
+    case 'np-save': npSave(); break;
+    case 'np-cancel': if(sheet.from){ sheet = sheet.from; renderSheet(true); } else if(sheet.edit){ sheet = {type:'part', code:sheet.edit}; renderSheet(true); } else closeSheet(); break;
+    case 'np-del': {
+      if(confirmPart!==d.code){ confirmPart=d.code; renderSheet(); setTimeout(()=>{ if(confirmPart===d.code){ confirmPart=null; render(); } }, 4000); break; }
+      confirmPart=null; const code=d.code;
+      photosFor(code).forEach(p=>updatePhoto(p.id, {part:null, pick:false}));
+      localParts = localParts.filter(l=>l.code!==code); saveLocalParts();
+      if(notes[code]){ delete notes[code]; kvPut('notes', notes).catch(()=>{}); }
+      rebuildParts(); closeSheet(); render(); toast(`Removed ${code}. Its photos are in Unsorted.`); break; }
     case 'free': if(!confirmFree){ confirmFree=true; render(); setTimeout(()=>{ confirmFree=false; render(); }, 4000); } else { confirmFree=false; freeSent(); } break;
   }
 });
@@ -654,12 +750,14 @@ document.addEventListener('input', e=>{
   const el=e.target;
   if(el.id==='q'){ ui.q=el.value; keepFocus($('#main'), ()=>{ $('#main').innerHTML=viewParts(); }); return; }
   if(el.id==='pkQ' && sheet && sheet.type==='pick'){ sheet.q=el.value; $('#pkRes').innerHTML=pickResults(sheet); return; }
+  if(sheet && sheet.type==='newpart'){ if(el.id==='npName'){ sheet.name=el.value; sheet.dupOk=false; } else if(el.id==='npCode') sheet.code=el.value; else if(el.id==='npNote') sheet.note=el.value; return; }
   if(el.id==='capIn'){ saveCaption(el.dataset.id, el.value); return; }
   if(el.id==='noteIn'){ saveNote(el.dataset.code, el.value); return; }
 });
 document.addEventListener('change', async e=>{
   const el=e.target;
   if(el.id==='sendAll'){ ui.sendAll=el.checked; render(); return; }
+  if(el.id==='npSys' && sheet && sheet.type==='newpart'){ sheet.sys=el.value; return; }
   if(el.id==='ptIn'){ updatePhoto(el.dataset.id, {point: el.value?+el.value:null}); return; }
   if(el.id==='setupIn'){ const f=el.files&&el.files[0]; el.value=''; if(!f) return; try{ await takeSetup(JSON.parse(await f.text()), 'file'); }catch(err){ toast('That file isn’t a parts list setup file.'); } return; }
   if(el.id==='camIn' || el.id==='galIn'){
@@ -685,14 +783,18 @@ window.addEventListener('appinstalled', ()=>{ installEvt=null; render(); toast('
 async function start(){
   idb = await idbOpen();
   if(idb){
+    try{ const lp = await kvGet('custom'); if(Array.isArray(lp)) localParts = lp.filter(l=>l && CODE_RE.test(l.code) && l.name); }catch(e){}
     try{ const s = await kvGet('setup'); if(validSetup(s)) applySetup(s); }catch(e){}
     try{ notes = (await kvGet('notes')) || {}; }catch(e){}
     try{ ((await phAll())||[]).forEach(r=>{ if(r && r.blob) recs.set(r.id, {id:r.id, blob:r.blob, meta:r.meta||{}, url:URL.createObjectURL(r.blob)}); }); }catch(e){}
   }
   if(navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(v=>{ persisted=v; render(); }).catch(()=>{});
+  if(setup) await reconcileLocal();
   await readHash();
   render();
   if(swSupported){
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if(hadController) toast('A new version of the app is ready', [{label:'Reload', fn:()=>location.reload()}]); });
     navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready).then(()=>{ offlineReady=true; render(); }).catch(()=>{ swSupported=false; render(); });
   }
 }
